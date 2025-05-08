@@ -1,5 +1,6 @@
-# id  arr  run  pr
-1     0     5   2
-2     1     4   2
-3     2     6   2
-4     5     1   2
+#id arrival runtime priority
+1	1	2	0
+2	1	3	6
+3	1	4	7
+4	1	1	1
+5	1	3	8

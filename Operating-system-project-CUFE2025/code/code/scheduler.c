@@ -641,7 +641,6 @@ void scheduleHPF(int totalProcesses) {
                 execlp("./process.out", "process.out", rt_str, NULL);
             }
 
-            curr->startTime = getClk();
             updateProcess(RUNNING, curr);
 
             // Wait for process to finish
