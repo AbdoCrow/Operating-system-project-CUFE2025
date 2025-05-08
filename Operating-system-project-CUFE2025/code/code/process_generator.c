@@ -67,7 +67,8 @@ int main(int argc, char *argv[]) {
             perror("execlp clk"); exit(1);
         }
         initClk(); 
-    
+    printf("Initial clock time in process generator: %d\n", getClk());
+
         // Fork+exec the scheduler, passing algo name and optional quantum
         int sched_pid = fork();
         if (sched_pid < 0) {
@@ -107,7 +108,7 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < process_count; i++) {
         // wait for arrival
-        while (getClk() < processes[i].arrivalTime) sleep(1);
+        while (getClk() < processes[i].arrivalTime);
 
         // <<< CHANGED: send each PC with mtype=2, payload only
         ProcMsg pm = { .mtype = 2, .process = processes[i] };

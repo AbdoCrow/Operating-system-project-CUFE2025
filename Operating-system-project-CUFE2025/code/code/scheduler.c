@@ -327,6 +327,7 @@ void pollArrivalsForMinHeap(MinHeap *heap) {
 
         // Update the process state to READY
         updateProcess(READY, p);
+printf("received process st time %d", getClk());
     }
 
     // Handle any potential errors from msgrcv
@@ -432,13 +433,12 @@ void updateProcess(processState state, PC *p) {
 
 
 void calculator(PC completed[], int count) {
-    int min=100;// assume minimum arrival time is less than or equal 100
+    
     for (int i = 0; i < count; i++) {
         totalWTA     += completed[i].weightedTurnaroundTime;
         totalTA      += completed[i].turnaroundTime;
         totalRT      += completed[i].responseTime;
         totalRuntime += completed[i].runningTime;
-        if(completed[i].arrivalTime < min) min=completed[i].arrivalTime;
     }
     avgWTA = (float)totalWTA / count;
     avgTA  = (float)totalTA  / count;
@@ -451,7 +451,7 @@ void calculator(PC completed[], int count) {
     }
     stdDevWTA = sqrt(devsum / count);
 
-    CPU_util = ((float)totalRuntime / (getClk()-min)) * 100;
+    CPU_util = ((float)totalRuntime / getClk()) * 100;
 
     // --- open the perf file ---
     FILE *fp = fopen("scheduler.perf", "w");
@@ -561,7 +561,7 @@ void scheduleSRTN(int totalProcesses) {
     while (finished < totalProcesses) {
         pollArrivalsForMinHeap(heap);
 
-
+printf("///////////////////////////////// The Time Now Is %d ////////////////////////////////\n", getClk());
         // If there's a process running and a new one has shorter remaining time, preempt
         if (curr && !HeapisEmpty(heap) && heap->data[0].remainingTime < curr->remainingTime) {
             kill(curr->pid, SIGSTOP);
@@ -615,16 +615,106 @@ while (getClk() == lastClk);  // busy wait until clock advances
                 finished++;
                 printf("Finished process %d at time%d\n", finished, getClk());
             }
-        } else {
-           // sleep(1);  // idle cycle
-           int lastClk = getClk();
-while (getClk() == lastClk);  // busy wait until clock advances
+        } 
+//         else {
+//            // sleep(1);  // idle cycle
+//            int lastClk = getClk();
+// while (getClk() == lastClk);  // busy wait until clock advances
 
-        }
+//         }
     }
 
     //destroyMinHeap(heap);
 }
+// void scheduleSRTN(int totalProcesses) {
+//     MinHeap *heap = malloc(sizeof(MinHeap));
+//     initMinHeap(heap);
+
+//     printf("[SRTN] Starting scheduling loop...\n");
+//     fflush(stdout);
+
+//     int finished = 0;
+//     PC *curr = NULL;
+
+//     while (finished < totalProcesses) {
+//         pollArrivalsForMinHeap(heap);
+
+//         // Preempt if needed
+//         if (curr && !HeapisEmpty(heap) && heap->data[0].remainingTime < curr->remainingTime) {
+//             kill(curr->pid, SIGSTOP);
+//             updateProcess(READY, curr);
+//             insert(heap, curr);
+//             free(curr);
+//             curr = NULL;
+//         }
+
+//         // Start new process
+//         if (!curr && !HeapisEmpty(heap)) {
+//             curr = malloc(sizeof(PC));
+//             *curr = extractMin(heap);
+
+//             if (!curr->pid) {
+//                 curr->pid = fork();
+//                 if (curr->pid == 0) {
+//                     char rt_str[16];
+//                     snprintf(rt_str, sizeof(rt_str), "%d", curr->remainingTime);
+//                     execlp("./process.out", "process.out", rt_str, NULL);
+//                 }
+//             } else {
+//                 kill(curr->pid, SIGCONT);
+//             }
+
+//             if (curr->startTime < 0)
+//                 curr->startTime = getClk();
+
+//             updateProcess(RUNNING, curr);
+//         }
+
+//         // Run for 1 time unit
+//         if (curr) {
+//             int lastClk = getClk();
+//             while (getClk() == lastClk) {
+//                 usleep(500); // prevent CPU spinning
+//             }
+
+//             printf("[SRTN] Time %d: Running process %d\n", getClk(), curr->id);
+//             fflush(stdout);
+
+//             curr->remainingTime--;
+
+//             // Process finished
+//             if (curr->remainingTime <= 0) {
+//                 kill(curr->pid, SIGSTOP);
+//                 curr->finishTime = getClk();
+//                 curr->turnaroundTime = curr->finishTime - curr->arrivalTime;
+//                 curr->responseTime = curr->startTime - curr->arrivalTime;
+//                 curr->weightedTurnaroundTime = (float)curr->turnaroundTime / curr->runningTime;
+
+//                 updateProcess(TERMINATED, curr);
+//                 completed[completedCount++] = *curr;
+//                 free(curr);
+//                 curr = NULL;
+//                 finished++;
+
+//                 printf("[SRTN] Finished a process. Total finished: %d at time %d\n", finished, getClk());
+//                 fflush(stdout);
+//             }
+//         } else {
+//             // Idle time: wait for clock to tick
+//             int lastClk = getClk();
+//             while (getClk() == lastClk) {
+//                 usleep(500); // prevent full CPU usage
+//             }
+
+//             printf("[SRTN] Time %d: Idle\n", getClk());
+//             fflush(stdout);
+//         }
+//     }
+
+//     // You can destroy the heap here if needed
+//     // destroyMinHeap(heap);
+// }
+
 
 void scheduleHPF(int totalProcesses) {
     MinHeap *heap = malloc(sizeof(MinHeap));
@@ -693,6 +783,7 @@ int main(int argc, char *argv[]) {
     int   quantum = (argc>=3 && strcmp(algo,"RR")==0)? atoi(argv[2]): 0;
 
     initClk();           // start clock
+    printf("intiallizing clock with time %d\n", getClk());
     initScheduler();     // open log, etc.
     printf(">> Debug: scheduling %s with quantum=%d\n", algo, quantum);
 
@@ -713,6 +804,7 @@ int main(int argc, char *argv[]) {
         scheduleRoundRobin(totalProcesses, quantum);   // <<< CHANGED
     }
      else if (strcmp(algo, "SRTN") == 0) {
+        printf("starting with time %d\n", getClk());
          scheduleSRTN(totalProcesses);
      }
     else {  // HPF
