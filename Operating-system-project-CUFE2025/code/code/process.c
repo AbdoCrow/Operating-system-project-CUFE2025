@@ -7,11 +7,11 @@ int main(int agrc, char * argv[])
 {
     initClk();
     remaining = atoi(argv[1]); //get remaining time from scheduler
-    printf("[Process %d] Started with remaining=%d\n", getpid(), remaining);
+    printf("[Process %d] Started with remaining=%d at time %d\n", getpid(), remaining, getClk());
     fflush(stdout);//////////////////////
     while (remaining > 0)
     {
-        printf("[Process %d] Tick, remaining=%d\n", getpid(), remaining);
+        printf("[Process %d] Tick, remaining=%d at time %d\n", getpid(), remaining, getClk());
         fflush(stdout);
         sleep(1);
         
