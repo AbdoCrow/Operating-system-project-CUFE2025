@@ -70,6 +70,7 @@ void insert(MinHeap *heap, PC* p);
 PC extractMin(MinHeap *heap);
 void heapify(MinHeap *heap, int index);
 void swap(PC *a, PC *b);
+// void destroyMinHeap(MinHeap *heap);
 
 // 
 typedef struct{

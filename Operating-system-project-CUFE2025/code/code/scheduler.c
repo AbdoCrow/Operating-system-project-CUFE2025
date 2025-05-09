@@ -9,7 +9,7 @@
 #include <stdio.h>    
 #include <errno.h>    
 #include <math.h>
-
+#include "buddy.c"
 #define MSG_KEY 1234
 #define MAX_PROCESSES 100
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -312,8 +312,9 @@ void pollArrivalsForMinHeap(MinHeap *heap) {
     ProcMsg pm;
     ssize_t r;
     int msqid = msgget(MSG_KEY, 0);
-    
+    printf("Attempting to receive message at time %d\n", getClk());
     while ((r = msgrcv(msqid, &pm, sizeof(pm.process), 2, IPC_NOWAIT)) > 0) {
+        printf("Received message for process %d at time %d\n", pm.process.id, getClk());
         // Allocate memory for the new process and initialize it
         PC *p = malloc(sizeof(PC));
         *p = pm.process;
@@ -322,6 +323,21 @@ void pollArrivalsForMinHeap(MinHeap *heap) {
         p->startTime     = -1;              // Not started yet
         p->finishTime    = -1;              // Not finished yet
 
+/////////////////////////////////////////////////////////
+// 🧠 Allocate memory using buddy system
+printf("Trying to allocate %d bytes for process %d\n", p->memSize, p->id);
+
+        void* mem_start = allocate_memory(p->memSize);
+        if (mem_start == NULL) {
+            printf("Error: Not enough memory for process %d\n", p->id);
+            free(p);
+            continue;
+        }
+
+        // Save memory info in the process struct
+        p->memPtr = mem_start;
+        p->memStart = (int)((char*)mem_start - memory); // Assuming 'memory' is globally defined
+/////////////////////////////////////////////////////////
         // Insert the process into the MinHeap based on remainingTime
         insert(heap, p); // Ensure the heap maintains the min-heap property on remainingTime
 
@@ -564,6 +580,7 @@ void scheduleSRTN(int totalProcesses) {
     //PC receivedProcess;
     int finished = 0;
     PC *curr = NULL;
+init_buddy_system();  // Buddy system should already be initialized
 
     while (finished < totalProcesses) {
         pollArrivalsForMinHeap(heap);
@@ -615,6 +632,7 @@ while (getClk() == lastClk);  // busy wait until clock advances
                 curr->turnaroundTime = curr->finishTime - curr->arrivalTime;
                 curr->responseTime = curr->startTime - curr->arrivalTime;
                 curr->weightedTurnaroundTime=(float)curr->turnaroundTime / curr->runningTime;
+free_memory(curr);  // Free memory previously allocated in pollArrivals
                 updateProcess(TERMINATED, curr);
                 completed[completedCount++] = *curr;
                 free(curr);
@@ -623,104 +641,18 @@ while (getClk() == lastClk);  // busy wait until clock advances
                 printf("Finished process %d at time%d\n", finished, getClk());
             }
         } 
-//         else {
-//            // sleep(1);  // idle cycle
-//            int lastClk = getClk();
-// while (getClk() == lastClk);  // busy wait until clock advances
+        else {
+           // sleep(1);  // idle cycle
+           int lastClk = getClk();
+while (getClk() == lastClk) usleep(10000);  // busy wait until clock advances
 
-//         }
+        }
     }
-
-    //destroyMinHeap(heap);
+cleanup_buddy_system();  // Free all memory allocated by the buddy system
+    // destroyMinHeap(heap);
+    free(heap);
 }
-// void scheduleSRTN(int totalProcesses) {
-//     MinHeap *heap = malloc(sizeof(MinHeap));
-//     initMinHeap(heap);
 
-//     printf("[SRTN] Starting scheduling loop...\n");
-//     fflush(stdout);
-
-//     int finished = 0;
-//     PC *curr = NULL;
-
-//     while (finished < totalProcesses) {
-//         pollArrivalsForMinHeap(heap);
-
-//         // Preempt if needed
-//         if (curr && !HeapisEmpty(heap) && heap->data[0].remainingTime < curr->remainingTime) {
-//             kill(curr->pid, SIGSTOP);
-//             updateProcess(READY, curr);
-//             insert(heap, curr);
-//             free(curr);
-//             curr = NULL;
-//         }
-
-//         // Start new process
-//         if (!curr && !HeapisEmpty(heap)) {
-//             curr = malloc(sizeof(PC));
-//             *curr = extractMin(heap);
-
-//             if (!curr->pid) {
-//                 curr->pid = fork();
-//                 if (curr->pid == 0) {
-//                     char rt_str[16];
-//                     snprintf(rt_str, sizeof(rt_str), "%d", curr->remainingTime);
-//                     execlp("./process.out", "process.out", rt_str, NULL);
-//                 }
-//             } else {
-//                 kill(curr->pid, SIGCONT);
-//             }
-
-//             if (curr->startTime < 0)
-//                 curr->startTime = getClk();
-
-//             updateProcess(RUNNING, curr);
-//         }
-
-//         // Run for 1 time unit
-//         if (curr) {
-//             int lastClk = getClk();
-//             while (getClk() == lastClk) {
-//                 usleep(500); // prevent CPU spinning
-//             }
-
-//             printf("[SRTN] Time %d: Running process %d\n", getClk(), curr->id);
-//             fflush(stdout);
-
-//             curr->remainingTime--;
-
-//             // Process finished
-//             if (curr->remainingTime <= 0) {
-//                 kill(curr->pid, SIGSTOP);
-//                 curr->finishTime = getClk();
-//                 curr->turnaroundTime = curr->finishTime - curr->arrivalTime;
-//                 curr->responseTime = curr->startTime - curr->arrivalTime;
-//                 curr->weightedTurnaroundTime = (float)curr->turnaroundTime / curr->runningTime;
-
-//                 updateProcess(TERMINATED, curr);
-//                 completed[completedCount++] = *curr;
-//                 free(curr);
-//                 curr = NULL;
-//                 finished++;
-
-//                 printf("[SRTN] Finished a process. Total finished: %d at time %d\n", finished, getClk());
-//                 fflush(stdout);
-//             }
-//         } else {
-//             // Idle time: wait for clock to tick
-//             int lastClk = getClk();
-//             while (getClk() == lastClk) {
-//                 usleep(500); // prevent full CPU usage
-//             }
-
-//             printf("[SRTN] Time %d: Idle\n", getClk());
-//             fflush(stdout);
-//         }
-//     }
-
-//     // You can destroy the heap here if needed
-//     // destroyMinHeap(heap);
-// }
 
 
 void scheduleHPF(int totalProcesses) {
@@ -790,7 +722,8 @@ int main(int argc, char *argv[]) {
     int   quantum = (argc>=3 && strcmp(algo,"RR")==0)? atoi(argv[2]): 0;
 
     initClk();           // start clock
-    printf("intiallizing clock with time %d\n", getClk());
+    printf("[Scheduler] Clock now = %d\n", getClk());
+    // printf("intiallizing clock with time %d\n", getClk());
     initScheduler();     // open log, etc.
     printf(">> Debug: scheduling %s with quantum=%d\n", algo, quantum);
 
@@ -811,7 +744,7 @@ int main(int argc, char *argv[]) {
         scheduleRoundRobin(totalProcesses, quantum);   // <<< CHANGED
     }
      else if (strcmp(algo, "SRTN") == 0) {
-        printf("starting with time %d\n", getClk());
+        printf("starting with time %d with totalprocesses %d\n", getClk(), totalProcesses);
          scheduleSRTN(totalProcesses);
      }
     else {  // HPF

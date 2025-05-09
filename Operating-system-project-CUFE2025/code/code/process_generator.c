@@ -4,7 +4,8 @@
 #include <sys/msg.h>
 #include <unistd.h>
 #include <signal.h>
-#include "scheduler.h"        
+#include "scheduler.h" 
+#include "buddy.c"       
 #define MSG_KEY 1234
 
 int msqid;
@@ -29,7 +30,7 @@ int main(int argc, char *argv[]) {
         perror("Error opening processes file");
         exit(-1);
     }
-
+printf("////////////////////////////////////////////////////////////one prcesss entered");
     char line[128];
     PC processes[MAX_PROCESSES]; // Assuming a max of 100 processes
     int process_count = 0;
@@ -45,6 +46,17 @@ int main(int argc, char *argv[]) {
             &processes[process_count].priority,
             &processes[process_count].memSize
         );
+        ////////////////////
+// void* mem_start = allocate_memory(processes[process_count].memSize);
+// if (mem_start == NULL) {
+//     printf("Error: Not enough memory for process %d\n", processes[process_count].id);
+//     continue;  // Skip process if no memory
+// }
+
+// processes[process_count].memPtr = mem_start;
+// processes[process_count].memStart = (int)((char*)mem_start - memory); // compute start index
+
+        ////////////////////
         process_count++;
     }
     fclose(fp);
@@ -73,8 +85,12 @@ int main(int argc, char *argv[]) {
         execlp("./clk.out", "clk.out", NULL);
         perror("execlp clk"); exit(1);
     }
-    initClk(); 
+    initClk();
+//     int lastClk = getClk();
+// while (getClk() == lastClk);  // busy wait until clock advances
     
+    printf("[Generator] Clock now = %d\n", getClk());
+
     // Fork+exec the scheduler, passing algo name and optional quantum
     int sched_pid = fork();
     if (sched_pid < 0) {
