@@ -1,6 +1,7 @@
 #ifndef SCHEDULER_H
 #define SCHEDULER_H
 #include "headers.h"
+#include "buddy.h"
 
 #define MAX_PROCESSES 100
 
@@ -27,6 +28,10 @@ typedef struct{
 
     int remainingTime;
     int waitingTime;
+
+    int memSize;
+    int memStart;  // Starting position in memory
+    void* memPtr;  // Pointer to allocated memory
 
     int priority;
     processState state;

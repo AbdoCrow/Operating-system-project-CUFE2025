@@ -38,11 +38,12 @@ int main(int argc, char *argv[]) {
         if (line[0] == '#')
             continue;//goes to the next line
         
-        sscanf(line, "%d\t%d\t%d\t%d", 
+        sscanf(line, "%d\t%d\t%d\t%d\t%d", 
             &processes[process_count].id,
             &processes[process_count].arrivalTime,
             &processes[process_count].runningTime,
-            &processes[process_count].priority
+            &processes[process_count].priority,
+            &processes[process_count].memSize
         );
         process_count++;
     }
