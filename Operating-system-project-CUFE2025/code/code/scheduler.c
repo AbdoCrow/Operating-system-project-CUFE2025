@@ -404,20 +404,27 @@ void updateProcess(processState state, PC *p) {
         switch (state) {
         case READY:
         // preemption
-        logProcessLine(t, p->id, "stopped", p, waited, -1, 0.0f);
-        break;
+
+        if (p->state == RUNNING) {
+                // Only log as stopped if it was previously running (preemption)
+                logProcessLine(t, p->id, "stopped", p, waited, -1, 0.0f);
+            } else if (p->state == NEW) {
+                // Log as arrived if it's a new process
+                logProcessLine(t, p->id, "arrived", p, waited, -1, 0.0f);
+            }
+            break;
 
         case RUNNING:
         if (p->startTime < 0) {
         // first time ever running
-        p->startTime    = t;
-        p->responseTime = t - p->arrivalTime;
-        logProcessLine(t, p->id, "started", p, waited, -1, 0.0f);
-        } else {
-        // a resume after preemption
-        logProcessLine(t, p->id, "resumed", p, waited, -1, 0.0f);
-        }
-        break;
+                p->startTime    = t;
+                p->responseTime = t - p->arrivalTime;
+                logProcessLine(t, p->id, "started", p, waited, -1, 0.0f);
+            } else {
+                // a resume after preemption
+                logProcessLine(t, p->id, "resumed", p, waited, -1, 0.0f);
+            }
+            break;
 
         case TERMINATED:
         // compute final metrics
