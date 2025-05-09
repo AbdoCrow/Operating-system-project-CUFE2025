@@ -1,9 +1,9 @@
-At time 2 process 1 stopped arr 1 total 2 remain 2 wait 1
-At time 2 process 2 stopped arr 1 total 3 remain 3 wait 1
-At time 2 process 3 stopped arr 1 total 4 remain 4 wait 1
-At time 2 process 4 stopped arr 1 total 1 remain 1 wait 1
-At time 2 process 5 stopped arr 1 total 3 remain 3 wait 1
-At time 2 process 1 started arr 1 total 2 remain 2 wait 1
+At time 1 process 1 arrived arr 1 total 2 remain 2 wait 0
+At time 1 process 2 arrived arr 1 total 3 remain 3 wait 0
+At time 1 process 3 arrived arr 1 total 4 remain 4 wait 0
+At time 1 process 4 arrived arr 1 total 1 remain 1 wait 0
+At time 1 process 5 arrived arr 1 total 3 remain 3 wait 0
+At time 1 process 1 started arr 1 total 2 remain 2 wait 0
 At time 3 process 1 finished arr 1 total 2 remain 2 wait 2 TA 2 WTA 1.00
 At time 3 process 4 started arr 1 total 1 remain 1 wait 2
 At time 4 process 4 finished arr 1 total 1 remain 1 wait 3 TA 3 WTA 3.00

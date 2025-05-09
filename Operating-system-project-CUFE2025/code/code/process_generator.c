@@ -1,9 +1,9 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <unistd.h>
+#include <signal.h>
 #include "scheduler.h"        
 #define MSG_KEY 1234
 
@@ -16,11 +16,13 @@ void clearResources(int signum)
         msgctl(msqid, IPC_RMID, NULL);
     }
     
-    kill(0, SIGINT); // Send SIGINT to all processes in the same process group
+    // Kill all processes in the process group
+    kill(0, SIGKILL);
 }
 
 int main(int argc, char *argv[]) {
     signal(SIGINT, clearResources);
+    signal(SIGTERM, clearResources);
     
     FILE *fp = fopen("processes.txt", "r");
     if (!fp) {
@@ -46,76 +48,77 @@ int main(int argc, char *argv[]) {
     }
     fclose(fp);
 
-        int algo_choice;
-        printf("Choose Scheduling Algorithm:\n");
-        printf("1. HPF\n2. SRTN\n3. RR\n");
-        scanf("%d", &algo_choice);
+    int algo_choice;
+    printf("Choose Scheduling Algorithm:\n");
+    printf("1. HPF\n2. SRTN\n3. RR\n");
+    scanf("%d", &algo_choice);
 
-        int quantum = 0;
-        if (algo_choice == 3) {
-            printf("Enter quantum: ");
-            scanf("%d", &quantum);
-        }
+    int quantum = 0;
+    if (algo_choice == 3) {
+        printf("Enter quantum: ");
+        scanf("%d", &quantum);
+    }
 
-        // Fork+exec the clock
-        int clk_pid = fork();
-        if (clk_pid < 0) {
-            perror("fork clk"); exit(1);
-        }
-        if (clk_pid == 0) {
-            execlp("./clk.out", "clk.out", NULL);
-            perror("execlp clk"); exit(1);
-        }
-        initClk(); 
-    
-        // Fork+exec the scheduler, passing algo name and optional quantum
-        int sched_pid = fork();
-        if (sched_pid < 0) {
-            perror("fork scheduler"); exit(1);
-        }
-        if (sched_pid == 0) {
-            if (algo_choice == 1) {
-                execlp("./scheduler.out", "scheduler.out", "HPF", NULL);
-            }
-            else if (algo_choice == 2) {
-                execlp("./scheduler.out", "scheduler.out", "SRTN", NULL);
-            }
-            else { // RR
-                char quantum_str[16];
-                sprintf(quantum_str, "%d", quantum);
-                execlp("./scheduler.out",
-                       "scheduler.out",
-                       "RR",
-                       quantum_str,
-                       NULL);
-            }
-            // if we get here, exec failed
-            perror("execlp scheduler");
-            exit(1);
-        }
-    
-   
-
+    // Create message queue first
     msqid = msgget(MSG_KEY, IPC_CREAT | 0666);  
     if (msqid < 0) { perror("msgget"); exit(1); }
 
-    // <<< CHANGED: send only the count (mtype=1)
+    // Fork+exec the clock
+    int clk_pid = fork();
+    if (clk_pid < 0) {
+        perror("fork clk"); exit(1);
+    }
+    if (clk_pid == 0) {
+        execlp("./clk.out", "clk.out", NULL);
+        perror("execlp clk"); exit(1);
+    }
+    initClk(); 
+    
+    // Fork+exec the scheduler, passing algo name and optional quantum
+    int sched_pid = fork();
+    if (sched_pid < 0) {
+        perror("fork scheduler"); exit(1);
+    }
+    if (sched_pid == 0) {
+        if (algo_choice == 1) {
+            execlp("./scheduler.out", "scheduler.out", "HPF", NULL);
+        }
+        else if (algo_choice == 2) {
+            execlp("./scheduler.out", "scheduler.out", "SRTN", NULL);
+        }
+        else { // RR
+            char quantum_str[16];
+            sprintf(quantum_str, "%d", quantum);
+            execlp("./scheduler.out",
+                   "scheduler.out",
+                   "RR",
+                   quantum_str,
+                   NULL);
+        }
+        // if we get here, exec failed
+        perror("execlp scheduler");
+        exit(1);
+    }
+
+    // Send process count to scheduler
     CountMsg cm = { .mtype = 1, .count = process_count };
     if (msgsnd(msqid, &cm, sizeof(cm.count), 0) == -1) {
         perror("msgsnd(count)"); exit(1);
     }
 
+    // Send processes to scheduler
     for (int i = 0; i < process_count; i++) {
         // wait for arrival
-        while (getClk() < processes[i].arrivalTime) sleep(1);
+        while (getClk() < processes[i].arrivalTime); //sleep 1 removed from here to avoid shifting the arrival time
 
-        // <<< CHANGED: send each PC with mtype=2, payload only
         ProcMsg pm = { .mtype = 2, .process = processes[i] };
         if (msgsnd(msqid, &pm, sizeof(pm.process), 0) == -1) {
             perror("msgsnd(proc)"); exit(1);
         }
         printf("Process %d sent to scheduler at time %d\n", processes[i].id, getClk());
     }
+
+    // Wait for scheduler to finish
     int wait_status;
     waitpid(sched_pid, &wait_status, 0); // wait for scheduler to finish
     if (WIFEXITED(wait_status)) {
@@ -123,6 +126,13 @@ int main(int argc, char *argv[]) {
     } else {
         printf("Scheduler terminated abnormally\n");
     }
+
+    // Kill clock process
+    kill(clk_pid, SIGKILL);
+    waitpid(clk_pid, NULL, 0);
+
+    // Clean up message queue
+    msgctl(msqid, IPC_RMID, NULL);
 
     destroyClk(true);
     return 0;

@@ -1,6 +1,6 @@
 === Scheduler Summary ===
-Average Turnaround Time                   = 10.00
-Average Response Time                     = 3.00
-Average Weighted Turnaround Time          = 4.00
-Standard Deviation of Weighted Turnaround = 0.59
-CPU Utilization (%)                       = 86.67
+Average Turnaround Time                   = 6.80
+Average Response Time                     = 4.20
+Average Weighted Turnaround Time          = 2.57
+Standard Deviation of Weighted Turnaround = 1.10
+CPU Utilization (%)                       = 100.00
