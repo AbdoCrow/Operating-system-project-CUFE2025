@@ -6,7 +6,6 @@
 #define TOTAL_MEMORY 1024
 #define MAX_BLOCK_SIZE 256
 #define MIN_BLOCK_SIZE 2  // Smallest block size we'll allocate
-#define NUM_FREE_LISTS 10 // log2(TOTAL_MEMORY/MIN_BLOCK_SIZE) + 1
 
 typedef struct Block {
     int size;
