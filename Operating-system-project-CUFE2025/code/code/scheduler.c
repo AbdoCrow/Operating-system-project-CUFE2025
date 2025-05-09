@@ -432,12 +432,13 @@ void updateProcess(processState state, PC *p) {
 
 
 void calculator(PC completed[], int count) {
-    
+    int min=100;// assume minimum arrival time is less than or equal 100
     for (int i = 0; i < count; i++) {
         totalWTA     += completed[i].weightedTurnaroundTime;
         totalTA      += completed[i].turnaroundTime;
         totalRT      += completed[i].responseTime;
         totalRuntime += completed[i].runningTime;
+        if(completed[i].arrivalTime < min) min=completed[i].arrivalTime;
     }
     avgWTA = (float)totalWTA / count;
     avgTA  = (float)totalTA  / count;
@@ -450,7 +451,7 @@ void calculator(PC completed[], int count) {
     }
     stdDevWTA = sqrt(devsum / count);
 
-    CPU_util = ((float)totalRuntime / getClk()) * 100;
+    CPU_util = ((float)totalRuntime / (getClk()-min)) * 100;
 
     // --- open the perf file ---
     FILE *fp = fopen("scheduler.perf", "w");
@@ -594,7 +595,10 @@ void scheduleSRTN(int totalProcesses) {
 
         // Let the current process run for 1 time unit
         if (curr) {
-            sleep(1);
+           // sleep(1);
+           int lastClk = getClk();
+while (getClk() == lastClk);  // busy wait until clock advances
+
             curr->remainingTime--;
 
             // If finished, terminate it
@@ -612,7 +616,10 @@ void scheduleSRTN(int totalProcesses) {
                 printf("Finished process %d at time%d\n", finished, getClk());
             }
         } else {
-            sleep(1);  // idle cycle
+           // sleep(1);  // idle cycle
+           int lastClk = getClk();
+while (getClk() == lastClk);  // busy wait until clock advances
+
         }
     }
 
