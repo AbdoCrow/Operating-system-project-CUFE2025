@@ -1,0 +1,241 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "buddy.h"
+
+static Block* free_blocks[10];  // Array of free block lists for different sizes
+                                //think of it as a linked list for each size (buckets)
+static char memory[TOTAL_MEMORY];  // The actual memory space
+static Block* allocated_blocks = NULL;  // List of all allocated blocks
+
+// Initialize the buddy system
+void init_buddy_system() {
+    // Initialize all free block lists to NULL
+    for (int i = 0; i < 10; i++) {
+        free_blocks[i] = NULL;
+    }
+    
+    // Create initial block of total memory
+    Block* initial_block = (Block*)malloc(sizeof(Block));
+    if (initial_block == NULL) {
+        perror("Error: Failed to allocate memory for initial block\n");
+        exit(1);
+    }
+    initial_block->size = TOTAL_MEMORY;
+    initial_block->start = 0;
+    initial_block->is_free = true;
+    initial_block->next = NULL;
+    initial_block->buddy = NULL;
+    
+    // Add to appropriate free list (log2(1024) = 10)
+    free_blocks[9] = initial_block;
+}
+
+// Find the appropriate block size for allocation
+static int get_block_size(int size) {
+    int block_size = MIN_BLOCK_SIZE;
+    while (block_size < size && block_size < MAX_BLOCK_SIZE) {
+        block_size *= 2;
+    }
+    return block_size;
+}
+
+// Find the index in free_blocks array for a given size
+static int get_block_index(int size) {
+    int index = 0;
+    while ((1 << (index + 1)) < size) { //if you don't understand the << operator, think of it as a multiplication by 2
+                                        //we used something like this in Logic project ALU
+        index++;
+    }
+    return index;
+}
+
+// Split a block into two buddies
+static void split_block(Block* block) {
+    int new_size = block->size / 2;
+    int new_start = block->start + new_size;
+    
+    // Create new buddy block
+    Block* buddy = (Block*)malloc(sizeof(Block));
+    if (buddy == NULL) {
+        perror("Error: Failed to allocate memory for buddy block\n");
+        exit(1);
+    }
+    
+    buddy->size = new_size;
+    buddy->start = new_start;
+    buddy->is_free = true;
+    buddy->next = NULL;
+    
+    // Update original block
+    block->size = new_size;
+    
+    // Link buddies
+    block->buddy = buddy;
+    buddy->buddy = block;
+    
+    // Add buddy to appropriate free list
+    int index = get_block_index(new_size);
+    buddy->next = free_blocks[index];
+    free_blocks[index] = buddy;
+}
+
+// Coalesce buddy blocks if both are free
+static void mergeFreeBlocks(Block* block) {
+    if (!block || !block->buddy) return;
+    
+    Block* buddy = block->buddy;
+    if (!buddy->is_free) return;
+    
+    // Determine which block is the left one
+    Block* left = (block->start < buddy->start) ? block : buddy;
+    Block* right = (block->start < buddy->start) ? buddy : block;
+    
+    // Remove both blocks from their current free lists
+    int index = get_block_index(left->size);
+    Block* current = free_blocks[index];
+    Block* prev = NULL;
+    
+    while (current != NULL) {
+        if (current == left || current == right) {
+            if (prev) {
+                prev->next = current->next;
+            } else {
+                free_blocks[index] = current->next;
+            }
+            break;
+        }
+        prev = current;
+        current = current->next;
+    }
+    
+    // Create new block
+    left->size *= 2;
+    left->buddy = NULL;
+    right->buddy = NULL;
+    
+    // Add to appropriate free list
+    index = get_block_index(left->size);
+    left->next = free_blocks[index];
+    free_blocks[index] = left;
+    
+    // Free the right block's metadata
+    free(right);
+    
+    // again to make sure we don't have any free blocks left
+    mergeFreeBlocks(left);
+}
+
+// Allocate memory of given size
+void* allocate_memory(int size) {
+    if (size > MAX_BLOCK_SIZE || size <= 0) {
+        return NULL;
+    }
+    
+    int block_size = get_block_size(size);
+    int index = get_block_index(block_size);
+    
+    // Find a suitable block
+    Block* block = NULL;
+    Block* prev = NULL;
+    Block* current = free_blocks[index];
+    
+    while (current != NULL) {
+        if (current->is_free && current->size >= block_size) {
+            block = current;
+            if (prev) {
+                prev->next = current->next;
+            } else {
+                free_blocks[index] = current->next;
+            }
+            break;
+        }
+        prev = current;
+        current = current->next;
+    }
+    
+    // If no suitable block found, try to split larger blocks
+    if (!block) {
+        for (int i = index + 1; i < 10; i++) {
+            if (free_blocks[i] != NULL) {
+                block = free_blocks[i];
+                free_blocks[i] = block->next;
+                
+                // Split the block until we get the right size
+                while (block->size > block_size) {
+                    split_block(block);
+                }
+                break;
+            }
+        }
+    }
+    
+    if (block) {
+        block->is_free = false;
+        
+        // Add to allocated blocks list
+        block->next = allocated_blocks;
+        allocated_blocks = block;
+        
+        return &memory[block->start];
+    }
+    
+    return NULL;  // No memory available
+}
+
+// Free allocated memory
+void free_memory(void* ptr) {
+    if (!ptr) return;
+    
+    // Find the block in allocated blocks list
+    int offset = (char*)ptr - memory;
+    Block* block = allocated_blocks;
+    Block* prev = NULL;
+    
+    while (block != NULL) {
+        if (block->start == offset) {
+            // Remove from allocated blocks list
+            if (prev) {
+                prev->next = block->next;
+            } else {
+                allocated_blocks = block->next;
+            }
+            
+            // Mark as free and add to free list
+            block->is_free = true;
+            int index = get_block_index(block->size);
+            block->next = free_blocks[index];
+            free_blocks[index] = block;
+            
+            // Try to merge with buddy
+            mergeFreeBlocks(block);
+            return;
+        }
+        prev = block;
+        block = block->next;
+    }
+}
+
+
+// Clean up the buddy system
+void cleanup_buddy_system() {
+    // Free all allocated blocks
+    Block* current = allocated_blocks;
+    while (current != NULL) {
+        Block* next = current->next;
+        free(current);
+        current = next;
+    }
+    allocated_blocks = NULL;
+    
+    // Free all free blocks
+    for (int i = 0; i < 10; i++) {
+        current = free_blocks[i];
+        while (current != NULL) {
+            Block* next = current->next;
+            free(current);
+            current = next;
+        }
+        free_blocks[i] = NULL;
+    }
+} 
