@@ -35,6 +35,7 @@ static int finished_count   = 0;
 
 FILE *processesFile;
 FILE *logFile;
+FILE *memoryLogFile;
 
 // Circular Queue Functions
 CircularQueue* createQueue(int capacity) {
@@ -124,6 +125,13 @@ void initScheduler()
         printf("Failed to open processes file\n");
         exit(1);
     }
+
+    memoryLogFile = fopen("memory.log", "w");
+    if (!memoryLogFile) {
+    perror("Failed to open memory.log");
+    exit(1);
+}
+
     
 }
 // end 
@@ -325,7 +333,6 @@ void pollArrivalsForMinHeap(MinHeap *heap) {
 
 /////////////////////////////////////////////////////////
 // 🧠 Allocate memory using buddy system
-printf("Trying to allocate %d bytes for process %d\n", p->memSize, p->id);
 
         void* mem_start = allocate_memory(p->memSize);
         if (mem_start == NULL) {
@@ -333,10 +340,20 @@ printf("Trying to allocate %d bytes for process %d\n", p->memSize, p->id);
             free(p);
             continue;
         }
-
+printf("Trying to allocate %d bytes for process %d at %p\n", p->memSize, p->id, mem_start);
         // Save memory info in the process struct
         p->memPtr = mem_start;
-        p->memStart = (int)((char*)mem_start - memory); // Assuming 'memory' is globally defined
+        p->memStart = (int)((char*)mem_start - memory); 
+
+        fprintf(memoryLogFile, 
+        "At time %d allocated %d bytes for process %d from %d to %d\n", 
+        getClk(), 
+        p->memSize, 
+        p->id, 
+        p->memStart, 
+        p->memStart + p->memSize - 1);
+fflush(memoryLogFile);
+
 /////////////////////////////////////////////////////////
         // Insert the process into the MinHeap based on remainingTime
         insert(heap, p); // Ensure the heap maintains the min-heap property on remainingTime
@@ -752,6 +769,8 @@ int main(int argc, char *argv[]) {
     }
     calculator(completed, completedCount);
     destroyClk(true);
+    fclose(memoryLogFile);
+
     return 0;
 }
 

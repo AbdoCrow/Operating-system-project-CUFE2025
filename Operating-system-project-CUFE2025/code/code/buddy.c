@@ -124,6 +124,7 @@ static void mergeFreeBlocks(Block* block) {
     
     // again to make sure we don't have any free blocks left
     mergeFreeBlocks(left);
+    printf("Freed %d bytes at offset %d -> %p\n", block->size, block->start, block);
 }
 
 // Allocate memory of given size
@@ -176,7 +177,7 @@ void* allocate_memory(int size) {
         // Add to allocated blocks list
         block->next = allocated_blocks;
         allocated_blocks = block;
-        
+        printf("Allocated %d bytes at offset %d -> %p\n", block->size, block->start, &memory[block->start]);
         return &memory[block->start];
     }
     
@@ -227,15 +228,22 @@ void cleanup_buddy_system() {
         current = next;
     }
     allocated_blocks = NULL;
-    
+    int total_free_memory = 0;
     // Free all free blocks
     for (int i = 0; i < 10; i++) {
         current = free_blocks[i];
         while (current != NULL) {
             Block* next = current->next;
+            total_free_memory += current->size;
+            printf("Trying to allocate %d bytes at %p\n", current->size, current->buddy);
             free(current);
             current = next;
         }
         free_blocks[i] = NULL;
     }
+    if (total_free_memory == TOTAL_MEMORY) {
+    printf("✅ All memory successfully freed. (%d bytes)\n", total_free_memory);
+} else {
+    printf("⚠️ Memory leak detected. Only %d / %d bytes freed.\n", total_free_memory, TOTAL_MEMORY);
+}
 } 
