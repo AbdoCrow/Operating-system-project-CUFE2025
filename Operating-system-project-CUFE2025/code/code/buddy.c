@@ -32,7 +32,7 @@ void init_buddy_system() {
 }
 
 // Find the appropriate block size for allocation
-static int get_block_size(int size) {
+ int get_block_size(int size) {
     int block_size = MIN_BLOCK_SIZE;
     while (block_size < size && block_size < MAX_BLOCK_SIZE) {
         block_size *= 2;
@@ -57,10 +57,6 @@ static void split_block(Block* block) {
     
     // Create new buddy block
     Block* buddy = (Block*)malloc(sizeof(Block));
-    if (buddy == NULL) {
-        perror("Error: Failed to allocate memory for buddy block\n");
-        exit(1);
-    }
     
     buddy->size = new_size;
     buddy->start = new_start;
@@ -80,7 +76,7 @@ static void split_block(Block* block) {
     free_blocks[index] = buddy;
 }
 
-// Coalesce buddy blocks if both are free
+// merge buddy blocks if both are free
 static void mergeFreeBlocks(Block* block) {
     if (!block || !block->buddy) return;
     

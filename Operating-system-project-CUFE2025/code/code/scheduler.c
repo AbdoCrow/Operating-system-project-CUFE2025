@@ -16,6 +16,7 @@
 int quantum = 2; // Example quantum, can be set dynamically
 
 CircularQueue * readyQueue=NULL;
+CircularQueue * BlockedQueue=NULL;
 PC* currentProcess = NULL;
 
 PC completed[MAX_PROCESSES];
@@ -36,6 +37,8 @@ static int finished_count   = 0;
 FILE *processesFile;
 FILE *logFile;
 FILE *memoryLogFile;
+
+CircularQueue *arrivalQueue = NULL;
 
 // Circular Queue Functions
 CircularQueue* createQueue(int capacity) {
@@ -133,7 +136,7 @@ void initScheduler()
     exit(1);
 }
 
-    
+    arrivalQueue = createQueue(MAX_PROCESSES);  // Initialize arrival queue
 }
 // end 
 
@@ -301,15 +304,35 @@ void pollArrivals(CircularQueue *q) {
     ProcMsg pm;
     ssize_t r;
     int msqid = msgget(MSG_KEY, 0);
+    int current_time = getClk();
+    
+    // First, check if any processes in arrival queue should be moved to ready queue
+    while (!isEmpty(arrivalQueue)) {
+        PC *p = peek(arrivalQueue);
+        if (current_time >= p->arrivalTime) {
+            p = dequeue(arrivalQueue);
+            enqueue(q, p);
+            updateProcess(READY, p);
+        } else {
+            break;  // No more processes ready to arrive
+        }
+    }
+    
+    // Then handle new messages
     while ((r = msgrcv(msqid, &pm, sizeof(pm.process), 2, IPC_NOWAIT)) > 0) {
         PC *p = malloc(sizeof(PC));
         *p = pm.process;
         p->remainingTime = p->runningTime;
-        p->state         = NEW;
-        p->startTime     = -1;
-        p->finishTime    = -1;
-        enqueue(q, p);
-        updateProcess(READY, p);
+        p->state = NEW;
+        p->startTime = -1;
+        p->finishTime = -1;
+        
+        if (current_time >= p->arrivalTime) {
+            enqueue(q, p);
+            updateProcess(READY, p);
+        } else {
+            enqueue(arrivalQueue, p);  // Store in arrival queue
+        }
     }
     if (r < 0 && errno != ENOMSG) {
         perror("msgrcv(RR)");
@@ -362,7 +385,7 @@ void pollArrivalsForMinHeap(MinHeap *heap, CircularQueue* Waitingqueue) {
         p->finishTime    = -1;              // Not finished yet
 
 /////////////////////////////////////////////////////////
-// 🧠 Allocate memory using buddy system
+// Allocate memory using buddy system
 
         void* mem_start = allocate_memory(p->memSize);
         if (mem_start == NULL) {
@@ -498,6 +521,10 @@ void updateProcess(processState state, PC *p) {
         wta   = (float)ta / total;
         logProcessLine(t, p->id, "finished", p, waited, ta, wta);
         break;
+
+        case BLOCKED:
+        logProcessLine(t, p->id, "blocked", p, waited, -1, 0.0f);
+        break;
         }
 
         p->state = state;
@@ -549,16 +576,69 @@ void calculator(PC completed[], int count) {
 // RR Scheduler
 void scheduleRoundRobin(int totalProcesses, int quantum) {
     CircularQueue *q = createQueue(totalProcesses);
+    BlockedQueue = createQueue(totalProcesses);  // Initialize blocked queue
     int finished = 0;
-    int now =getClk();
+    int now = getClk();
+    init_buddy_system();  // Initialize buddy system
 
     while (finished < totalProcesses) {
         pollArrivals(q);
+        
+        // First, try to allocate memory for blocked processes
+        while (!isEmpty(BlockedQueue)) {
+            PC *blocked = peek(BlockedQueue);  // Look at the first blocked process
+            void* mem_start = allocate_memory(blocked->memSize);
+            
+            if (mem_start != NULL) {
+                // Memory is now available, dequeue from blocked and add to ready
+                blocked = dequeue(BlockedQueue);
+                blocked->memPtr = mem_start;
+                blocked->memStart = (int)((char*)mem_start - memory);
+                blocked->realBlock = get_block_size(blocked->memSize);
+                
+                fprintf(memoryLogFile, 
+                    "At time %d allocated %d bytes for process %d from %d to %d\n", 
+                    getClk(), 
+                    blocked->memSize, 
+                    blocked->id, 
+                    blocked->memStart, 
+                    blocked->memStart + blocked->realBlock - 1);
+                fflush(memoryLogFile);
+                
+                enqueue(q, blocked);  // Add to ready queue
+            } else {
+                // Still no memory available, keep process blocked
+                break;
+            }
+        }
         
         if (!isEmpty(q)) {
             PC *curr = dequeue(q);
             //updateProcess(READY, curr);
             
+            // Allocate memory for the process if it hasn't been allocated yet
+            if (curr->memPtr == NULL) {
+                void* mem_start = allocate_memory(curr->memSize);
+                if (mem_start == NULL) {
+                    printf("Error: Not enough memory for process added to blocked queue %d\n", curr->id);
+                    updateProcess(BLOCKED, curr);
+                    enqueue(BlockedQueue, curr);
+                    //free(curr);
+                    continue;
+                }
+                curr->memPtr = mem_start;
+                curr->memStart = (int)((char*)mem_start - memory);
+                curr->realBlock = get_block_size(curr->memSize);
+                
+                fprintf(memoryLogFile, 
+                    "At time %d allocated %d bytes for process %d from %d to %d\n", 
+                    getClk(), 
+                    curr->memSize, 
+                    curr->id, 
+                    curr->memStart, 
+                    curr->memStart + curr->realBlock - 1);
+                fflush(memoryLogFile);
+            }
 
             if (!curr->pid) {
                 curr->pid = fork();
@@ -601,7 +681,23 @@ void scheduleRoundRobin(int totalProcesses, int quantum) {
                 //curr->finishTime = getClk();
                 curr->turnaroundTime = curr->finishTime - curr->arrivalTime;
                 curr->responseTime = curr->startTime - curr->arrivalTime;
-                curr->weightedTurnaroundTime=(float)curr->turnaroundTime / curr->runningTime;
+                curr->weightedTurnaroundTime = (float)curr->turnaroundTime / curr->runningTime;
+                
+                // Free the process's memory before terminating
+                if (curr->memPtr != NULL) {
+                    free_memory(curr->memPtr);
+                    fprintf(memoryLogFile, 
+                    "At time %d freed %d bytes for process %d from %d to %d\n", 
+                    getClk(), 
+                    curr->memSize, 
+                    curr->id, 
+                    curr->memStart, 
+                    curr->memStart + curr->realBlock - 1);
+                    fflush(memoryLogFile);
+                    
+                    curr->memPtr = NULL;
+                }
+                
                 updateProcess(TERMINATED, curr);
                 completed[completedCount++] = *curr;
                 finished++;
@@ -616,7 +712,10 @@ void scheduleRoundRobin(int totalProcesses, int quantum) {
         }
     }
 
+    cleanup_buddy_system();  // Clean up buddy system
     destroyQueue(q);
+    destroyQueue(BlockedQueue);
+    destroyQueue(arrivalQueue);  // Clean up arrival queue
 }
 
 
