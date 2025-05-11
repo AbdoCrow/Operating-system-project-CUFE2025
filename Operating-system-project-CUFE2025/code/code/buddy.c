@@ -7,6 +7,7 @@ static Block* free_blocks[10];  // Array of free block lists for different sizes
                                 //think of it as a linked list for each size (buckets)
 static char memory[TOTAL_MEMORY];  // The actual memory space
 static Block* allocated_blocks = NULL;  // List of all allocated blocks
+static int total_allocated = 0;
 
 // Initialize the buddy system
 void init_buddy_system() {
@@ -92,8 +93,9 @@ static void mergeFreeBlocks(Block* block) {
     Block* current = free_blocks[index];
     Block* prev = NULL;
     
+    // Remove left block from free list
     while (current != NULL) {
-        if (current == left || current == right) {
+        if (current == left) {
             if (prev) {
                 prev->next = current->next;
             } else {
@@ -105,31 +107,62 @@ static void mergeFreeBlocks(Block* block) {
         current = current->next;
     }
     
-    // Create new block
+    // Remove right block from free list
+    //I added a FIX here to remove the right block from the free list 
+    //I was getting an error because the right block was not being removed from the free list thought free will remove it
+    current = free_blocks[index];
+    prev = NULL;
+    while (current != NULL) {
+        if (current == right) {
+            if (prev) {
+                prev->next = current->next;
+            } else {
+                free_blocks[index] = current->next;
+            }
+            break;
+        }
+        prev = current;
+        current = current->next;
+    }
+    
+    // Create new merged block
     left->size *= 2;
     left->buddy = NULL;
-    right->buddy = NULL;
-    
-    // Add to appropriate free list
-    index = get_block_index(left->size);
-    left->next = free_blocks[index];
-    free_blocks[index] = left;
     
     // Free the right block's metadata
     free(right);
     
-    // again to make sure we don't have any free blocks left
+    // Add merged block to appropriate free list
+    index = get_block_index(left->size);
+    left->next = free_blocks[index];
+    free_blocks[index] = left;
+    
+    printf("Merged blocks: %d + %d = %d bytes at offset %d\n", 
+           left->size/2, left->size/2, left->size, left->start);
+    
+    // Try to merge again if possible
     mergeFreeBlocks(left);
-    printf("Freed %d bytes at offset %d -> %p\n", block->size, block->start, block);
 }
 
 // Allocate memory of given size
 void* allocate_memory(int size) {
-    if (size > MAX_BLOCK_SIZE || size <= 0) {
+    if (size > MAX_BLOCK_SIZE || size <= 0 || size > TOTAL_MEMORY) {
+        printf("Error: Requested size %d exceeds available memory %d\n", size, TOTAL_MEMORY);
         return NULL;
     }
     
     int block_size = get_block_size(size);
+    if (block_size > TOTAL_MEMORY) {
+        printf("Error: Block size %d exceeds total memory %d\n", block_size, TOTAL_MEMORY);
+        return NULL;
+    }
+    
+    if (total_allocated + block_size > TOTAL_MEMORY) {
+        printf("Error: Not enough memory available. Requested: %d, Available: %d\n", 
+               block_size, TOTAL_MEMORY - total_allocated);
+        return NULL;
+    }
+    
     int index = get_block_index(block_size);
     
     // Find a suitable block
@@ -168,13 +201,24 @@ void* allocate_memory(int size) {
     }
     
     if (block) {
+        // Verify the block's start address is within bounds
+        if (block->start < 0 || block->start + block->size > TOTAL_MEMORY) {
+            printf("Error: Block address out of bounds (start: %d, size: %d)\n", 
+                   block->start, block->size);
+            return NULL;
+        }
+        
         block->is_free = false;
+        total_allocated += block->size;
         
         // Add to allocated blocks list
         block->next = allocated_blocks;
         allocated_blocks = block;
-        printf("Allocated %d bytes at offset %d -> %p\n", block->size, block->start, &memory[block->start]);
-        return &memory[block->start];
+        
+        void* ptr = &memory[block->start];
+        printf("Allocated %d bytes at offset %d -> %p (Total allocated: %d/%d)\n", 
+               block->size, block->start, ptr, total_allocated, TOTAL_MEMORY);
+        return ptr;
     }
     
     return NULL;  // No memory available
@@ -182,10 +226,26 @@ void* allocate_memory(int size) {
 
 // Free allocated memory
 void free_memory(void* ptr) {
-    if (!ptr) return;
+    if (!ptr) {
+        printf("Error: Attempting to free NULL pointer\n");
+        return;
+    }
+    
+    // Validate pointer is within memory bounds
+    if (ptr < (void*)memory || ptr >= (void*)(memory + TOTAL_MEMORY)) {
+        printf("Error: Invalid memory pointer %p (valid range: %p - %p)\n", 
+               ptr, (void*)memory, (void*)(memory + TOTAL_MEMORY));
+        return;
+    }
     
     // Find the block in allocated blocks list
     int offset = (char*)ptr - memory;
+    if (offset < 0 || offset >= TOTAL_MEMORY) {
+        printf("Error: Invalid memory offset %d (valid range: 0 - %d)\n", 
+               offset, TOTAL_MEMORY - 1);
+        return;
+    }
+    
     Block* block = allocated_blocks;
     Block* prev = NULL;
     
@@ -200,6 +260,10 @@ void free_memory(void* ptr) {
             
             // Mark as free and add to free list
             block->is_free = true;
+            total_allocated -= block->size;
+            printf("Freed %d bytes at offset %d (Total allocated: %d/%d)\n", 
+                   block->size, block->start, total_allocated, TOTAL_MEMORY);
+            
             int index = get_block_index(block->size);
             block->next = free_blocks[index];
             free_blocks[index] = block;
@@ -211,6 +275,8 @@ void free_memory(void* ptr) {
         prev = block;
         block = block->next;
     }
+    
+    printf("Error: Attempting to free unallocated memory at offset %d\n", offset);
 }
 
 
@@ -238,8 +304,8 @@ void cleanup_buddy_system() {
         free_blocks[i] = NULL;
     }
     if (total_free_memory == TOTAL_MEMORY) {
-    printf("✅ All memory successfully freed. (%d bytes)\n", total_free_memory);
+    printf("All memory successfully freed. (%d bytes)\n", total_free_memory);
 } else {
-    printf("⚠️ Memory leak detected. Only %d / %d bytes freed.\n", total_free_memory, TOTAL_MEMORY);
+    printf("Memory leak detected. Only %d / %d bytes freed.\n", total_free_memory, TOTAL_MEMORY);
 }
 } 
