@@ -32,7 +32,7 @@ int runningProcessesStartTime;
 int runningProcessesEndTime;
 int static totalProcesses = 0;
 static int finished_count   = 0;
-
+//CircularQueue* Waitingqueue; // to store processes when no memory available
 FILE *processesFile;
 FILE *logFile;
 FILE *memoryLogFile;
@@ -112,6 +112,7 @@ PC* peek(CircularQueue* q) {
 
 void initScheduler()
 {
+    
     logFile = fopen("scheduler.log", "w");
     if (logFile == NULL)
     {
@@ -316,11 +317,40 @@ void pollArrivals(CircularQueue *q) {
     }
 }
 
-void pollArrivalsForMinHeap(MinHeap *heap) {
+void pollArrivalsForMinHeap(MinHeap *heap, CircularQueue* Waitingqueue) {
     ProcMsg pm;
     ssize_t r;
     int msqid = msgget(MSG_KEY, 0);
     printf("Attempting to receive message at time %d\n", getClk());
+    printf("Waiting queue has count  %d\n", Waitingqueue->count);
+    for (int i = 0; i < Waitingqueue->count; ++i) {
+    PC* p = peek(Waitingqueue);  // Peek without removing
+
+    void* mem_start = allocate_memory(p->memSize);
+
+    if (mem_start != NULL) {
+        // Allocation succeeded, now safe to dequeue
+        dequeue(Waitingqueue);
+
+        p->memPtr = mem_start;
+        p->memStart = (int)((char*)mem_start - memory);
+
+        fprintf(memoryLogFile,
+            "At time %d allocated %d bytes for process %d from %d to %d\n",
+            getClk(),
+            p->memSize,
+            p->id,
+            p->memStart,
+            p->memStart + p->memSize - 1);
+        fflush(memoryLogFile);
+
+        insert(heap, p);
+        updateProcess(READY, p);
+    }
+    else{
+        printf("still no enought memory");
+    }
+    }
     while ((r = msgrcv(msqid, &pm, sizeof(pm.process), 2, IPC_NOWAIT)) > 0) {
         printf("Received message for process %d at time %d\n", pm.process.id, getClk());
         // Allocate memory for the new process and initialize it
@@ -336,8 +366,10 @@ void pollArrivalsForMinHeap(MinHeap *heap) {
 
         void* mem_start = allocate_memory(p->memSize);
         if (mem_start == NULL) {
-            printf("Error: Not enough memory for process %d\n", p->id);
-            free(p);
+            // printf("Error: Not enough memory for process %d\n", p->id);
+            // free(p);
+                        printf("Insufficient memory for process %d, adding to waiting queue\n", p->id);
+            enqueue(Waitingqueue, p);
             continue;
         }
 printf("Trying to allocate %d bytes for process %d at %p\n", p->memSize, p->id, mem_start);
@@ -595,12 +627,13 @@ void scheduleSRTN(int totalProcesses) {
     MinHeap *heap = malloc(sizeof(MinHeap));
     initMinHeap(heap);
     //PC receivedProcess;
+    CircularQueue* Waitingqueue = createQueue(totalProcesses);
     int finished = 0;
     PC *curr = NULL;
 init_buddy_system();  // Buddy system should already be initialized
 
     while (finished < totalProcesses) {
-        pollArrivalsForMinHeap(heap);
+        pollArrivalsForMinHeap(heap, Waitingqueue);
 
 printf("///////////////////////////////// The Time Now Is %d ////////////////////////////////\n", getClk());
         // If there's a process running and a new one has shorter remaining time, preempt
@@ -638,7 +671,7 @@ printf("///////////////////////////////// The Time Now Is %d ///////////////////
         if (curr) {
            // sleep(1);
            int lastClk = getClk();
-while (getClk() == lastClk);  // busy wait until clock advances
+while (getClk() == lastClk) usleep(10000);  // busy wait until clock advances
 
             curr->remainingTime--;
 
@@ -650,6 +683,14 @@ while (getClk() == lastClk);  // busy wait until clock advances
                 curr->responseTime = curr->startTime - curr->arrivalTime;
                 curr->weightedTurnaroundTime=(float)curr->turnaroundTime / curr->runningTime;
 free_memory(curr);  // Free memory previously allocated in pollArrivals
+fprintf(memoryLogFile,
+        "At time %d freed %d bytes from process %d from %d to %d\n",
+        getClk(),
+        curr->memSize,
+        curr->id,
+        curr->memStart,
+        curr->memStart + curr->memSize - 1);
+    fflush(memoryLogFile);
                 updateProcess(TERMINATED, curr);
                 completed[completedCount++] = *curr;
                 free(curr);
@@ -733,7 +774,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <HPF|SRTN|RR> [quantum]\n", argv[0]);
         exit(1);
     }
-
     // <<< CHANGED: get algorithm + quantum from argv
     char *algo    = argv[1];
     int   quantum = (argc>=3 && strcmp(algo,"RR")==0)? atoi(argv[2]): 0;
