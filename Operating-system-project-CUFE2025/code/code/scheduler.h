@@ -10,7 +10,8 @@ typedef enum{
     NEW,
     READY,
     RUNNING,
-    TERMINATED
+    TERMINATED,
+    BLOCKED
 } processState;
 
 //CONTROLLER
@@ -32,6 +33,7 @@ typedef struct{
     int memSize;
     int memStart;  // Starting position in memory
     void* memPtr;  // Pointer to allocated memory
+    int realBlock;
 
     int priority;
     processState state;
