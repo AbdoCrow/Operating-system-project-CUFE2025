@@ -131,6 +131,7 @@ static void mergeFreeBlocks(Block* block) {
     
     // Free the right block's metadata
     free(right);
+    right->size = 0;
     
     // Add merged block to appropriate free list
     index = get_block_index(left->size);
@@ -290,14 +291,13 @@ void cleanup_buddy_system() {
         current = next;
     }
     allocated_blocks = NULL;
-    int total_free_memory = 0;
+    
     // Free all free blocks
     for (int i = 0; i < 10; i++) {
         current = free_blocks[i];
         while (current != NULL) {
             Block* next = current->next;
             if (current->size > 0 && current->size <= TOTAL_MEMORY) {  // Validate block size
-                total_free_memory += current->size;
                 current->next = NULL;  // Clear next pointer before freeing
                 current->buddy = NULL; // Clear buddy pointer before freeing
                 free(current);
@@ -306,11 +306,12 @@ void cleanup_buddy_system() {
         }
         free_blocks[i] = NULL;
     }
-     printf("All memory successfully freed. (%d bytes)\n", total_free_memory);
+    
+    // Verify all memory is freed
+    if (total_allocated == 0) {
+        printf("All memory successfully freed. (%d bytes)\n", TOTAL_MEMORY);
+    } else {
+        printf("Memory leak detected. %d bytes still allocated.\n", total_allocated);
+    }
+}
 
-//     if (total_free_memory == TOTAL_MEMORY) {
-//     printf("All memory successfully freed. (%d bytes)\n", total_free_memory);
-// } else {
-//     printf("Memory leak detected. Only %d / %d bytes freed.\n", total_free_memory, TOTAL_MEMORY);
-// }
-} 
