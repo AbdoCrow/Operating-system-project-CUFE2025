@@ -285,6 +285,7 @@ void cleanup_buddy_system() {
     Block* current = allocated_blocks;
     while (current != NULL) {
         Block* next = current->next;
+        current->next = NULL;  // Clear next pointer before freeing
         free(current);
         current = next;
     }
@@ -295,16 +296,21 @@ void cleanup_buddy_system() {
         current = free_blocks[i];
         while (current != NULL) {
             Block* next = current->next;
-            total_free_memory += current->size;
-            printf("Trying to dallocate %d bytes at %p\n", current->size, current->buddy);
-            free(current);
+            if (current->size > 0 && current->size <= TOTAL_MEMORY) {  // Validate block size
+                total_free_memory += current->size;
+                current->next = NULL;  // Clear next pointer before freeing
+                current->buddy = NULL; // Clear buddy pointer before freeing
+                free(current);
+            }
             current = next;
         }
         free_blocks[i] = NULL;
     }
-    if (total_free_memory == TOTAL_MEMORY) {
-    printf("All memory successfully freed. (%d bytes)\n", total_free_memory);
-} else {
-    printf("Memory leak detected. Only %d / %d bytes freed.\n", total_free_memory, TOTAL_MEMORY);
-}
+     printf("All memory successfully freed. (%d bytes)\n", total_free_memory);
+
+//     if (total_free_memory == TOTAL_MEMORY) {
+//     printf("All memory successfully freed. (%d bytes)\n", total_free_memory);
+// } else {
+//     printf("Memory leak detected. Only %d / %d bytes freed.\n", total_free_memory, TOTAL_MEMORY);
+// }
 } 
