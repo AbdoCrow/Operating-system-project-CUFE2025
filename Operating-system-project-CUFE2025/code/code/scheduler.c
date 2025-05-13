@@ -163,24 +163,55 @@ void swap(PC *a, PC *b) {
 }
 
 // Function to heapify the Min Heap at a given index
+// void heapify(MinHeap *heap, int index) {
+//     int left = 2 * index + 1;
+//     int right = 2 * index + 2;
+//     int smallest = index;
+
+//     // Find the smallest among the current node, left child, and right child
+//     if (left < heap->Heapsize && heap->data[left].remainingTime < heap->data[smallest].remainingTime)
+//         smallest = left;
+
+//     if (right < heap->Heapsize && heap->data[right].remainingTime < heap->data[smallest].remainingTime)
+//         smallest = right;
+
+//     // Swap and heapify if needed
+//     if (smallest != index) {
+//         swap(&heap->data[index], &heap->data[smallest]);
+//         heapify(heap, smallest);
+//     }
+// }
+////////////
 void heapify(MinHeap *heap, int index) {
     int left = 2 * index + 1;
     int right = 2 * index + 2;
     int smallest = index;
 
-    // Find the smallest among the current node, left child, and right child
-    if (left < heap->Heapsize && heap->data[left].remainingTime < heap->data[smallest].remainingTime)
-        smallest = left;
+    // Check if left child is "smaller" (based on remainingTime then arrivalTime)
+    if (left < heap->Heapsize) {
+        if (heap->data[left].remainingTime < heap->data[smallest].remainingTime ||
+            (heap->data[left].remainingTime == heap->data[smallest].remainingTime &&
+             heap->data[left].arrivalTime < heap->data[smallest].arrivalTime)) {
+            smallest = left;
+        }
+    }
 
-    if (right < heap->Heapsize && heap->data[right].remainingTime < heap->data[smallest].remainingTime)
-        smallest = right;
-
-    // Swap and heapify if needed
+    // Check if right child is "smaller"
+    if (right < heap->Heapsize) {
+        if (heap->data[right].remainingTime < heap->data[smallest].remainingTime ||
+            (heap->data[right].remainingTime == heap->data[smallest].remainingTime &&
+             heap->data[right].arrivalTime < heap->data[smallest].arrivalTime)) {
+            smallest = right;
+        }
+    }
+    // Swap and continue heapifying if necessary
     if (smallest != index) {
         swap(&heap->data[index], &heap->data[smallest]);
         heapify(heap, smallest);
     }
 }
+
+////////////
 void heapify_HPF(MinHeap *heap, int index) {
     int left = 2 * index + 1;
     int right = 2 * index + 2;
@@ -732,7 +763,6 @@ void scheduleRoundRobin(int totalProcesses, int quantum) {
 
 
 //SRTN Scheduler
-
 void scheduleSRTN(int totalProcesses) {
     MinHeap *heap = malloc(sizeof(MinHeap));
     initMinHeap(heap);
@@ -740,7 +770,7 @@ void scheduleSRTN(int totalProcesses) {
     CircularQueue* Waitingqueue = createQueue(totalProcesses);
     int finished = 0;
     PC *curr = NULL;
-init_buddy_system();  // Buddy system should already be initialized
+    init_buddy_system();  // Buddy system should already be initialized
 
     while (finished < totalProcesses) {
         pollArrivalsForMinHeap(heap, Waitingqueue);
@@ -792,7 +822,7 @@ init_buddy_system();  // Buddy system should already be initialized
                 curr->turnaroundTime = curr->finishTime - curr->arrivalTime;
                 curr->responseTime = curr->startTime - curr->arrivalTime;
                 curr->weightedTurnaroundTime=(float)curr->turnaroundTime / curr->runningTime;
-                free_memory(curr);  // Free memory previously allocated in pollArrivals
+                free_memory(curr->memPtr);  // Free memory previously allocated in pollArrivals
                 fprintf(memoryLogFile,
                 "At time %d freed %d bytes from process %d from %d to %d\n",
                 getClk(),
@@ -810,14 +840,10 @@ init_buddy_system();  // Buddy system should already be initialized
             }
         } 
         else {
-           // sleep(1);  // idle cycle
-           int lastClk = getClk();
-           while (getClk() == lastClk) usleep(10000);  // busy wait until clock advances
-
+              sleep(1);  // idle cycle
         }
     }
     cleanup_buddy_system();  // Free all memory allocated by the buddy system
-    // destroyMinHeap(heap);
     destroyQueue(Waitingqueue);
     free(heap);
 }
