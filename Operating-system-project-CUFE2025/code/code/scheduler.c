@@ -391,6 +391,7 @@ void pollArrivalsForMinHeap(MinHeap *heap, CircularQueue* Waitingqueue) {
                 blocked->memStart + blocked->realBlock - 1);
             fflush(memoryLogFile);
             
+            updateProcess(READY, blocked);
             insert(heap, blocked);  // Add to ready queue
         } else {
             // Still no memory available, keep process blocked
