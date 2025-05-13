@@ -391,6 +391,7 @@ void pollArrivalsForMinHeap(MinHeap *heap, CircularQueue* Waitingqueue) {
                 blocked->memStart + blocked->realBlock - 1);
             fflush(memoryLogFile);
             
+            updateProcess(READY, blocked);
             insert(heap, blocked);  // Add to ready queue
         } else {
             // Still no memory available, keep process blocked
@@ -893,32 +894,6 @@ void scheduleHPF(int totalProcesses) {
     while (finished < totalProcesses) {
         pollArrivalsForMinHeap_HPF(heap, Waitingqueue);  // Handles arrivals + memory
 
-        // Try to allocate memory for blocked processes
-        // while (!isEmpty(Waitingqueue)) {
-        //     PC *blocked = peek(Waitingqueue);
-        //     void* mem_start = allocate_memory(blocked->memSize);
-
-        //     if (mem_start != NULL) {
-        //         blocked = dequeue(Waitingqueue);
-        //         blocked->memPtr = mem_start;
-        //         blocked->memStart = (int)((char*)mem_start - memory);
-        //         blocked->realBlock = get_block_size(blocked->memSize);
-
-        //         fprintf(memoryLogFile,
-        //                 "At time %d allocated %d bytes for process %d from %d to %d\n",
-        //                 getClk(),
-        //                 blocked->memSize,
-        //                 blocked->id,
-        //                 blocked->memStart,
-        //                 blocked->memStart + blocked->realBlock - 1);
-        //         fflush(memoryLogFile);
-
-        //         insert_HPF(heap, blocked);
-        //         updateProcess(READY, blocked);
-        //     } else {
-        //         break; // no memory available, stop polling
-        //     }
-        // }
 
         // If no process is running, start highest priority process
         if (!curr && !HeapisEmpty(heap)) {
