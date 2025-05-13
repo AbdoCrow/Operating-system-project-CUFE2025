@@ -574,6 +574,7 @@ void updateProcess(processState state, PC *p) {
             }
             break;
 
+
         case RUNNING:
         if (p->startTime < 0) {
         // first time ever running

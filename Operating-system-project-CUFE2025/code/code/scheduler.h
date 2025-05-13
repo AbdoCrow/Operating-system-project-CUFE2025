@@ -19,6 +19,7 @@ typedef struct{
     int id;
     int arrivalTime;
     int runningTime;
+    int startORResume;
 
     int startTime;
     int finishTime;
