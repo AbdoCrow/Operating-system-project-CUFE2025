@@ -893,31 +893,31 @@ void scheduleHPF(int totalProcesses) {
         pollArrivalsForMinHeap_HPF(heap, Waitingqueue);  // Handles arrivals + memory
 
         // Try to allocate memory for blocked processes
-        while (!isEmpty(Waitingqueue)) {
-            PC *blocked = peek(Waitingqueue);
-            void* mem_start = allocate_memory(blocked->memSize);
+        // while (!isEmpty(Waitingqueue)) {
+        //     PC *blocked = peek(Waitingqueue);
+        //     void* mem_start = allocate_memory(blocked->memSize);
 
-            if (mem_start != NULL) {
-                blocked = dequeue(Waitingqueue);
-                blocked->memPtr = mem_start;
-                blocked->memStart = (int)((char*)mem_start - memory);
-                blocked->realBlock = get_block_size(blocked->memSize);
+        //     if (mem_start != NULL) {
+        //         blocked = dequeue(Waitingqueue);
+        //         blocked->memPtr = mem_start;
+        //         blocked->memStart = (int)((char*)mem_start - memory);
+        //         blocked->realBlock = get_block_size(blocked->memSize);
 
-                fprintf(memoryLogFile,
-                        "At time %d allocated %d bytes for process %d from %d to %d\n",
-                        getClk(),
-                        blocked->memSize,
-                        blocked->id,
-                        blocked->memStart,
-                        blocked->memStart + blocked->realBlock - 1);
-                fflush(memoryLogFile);
+        //         fprintf(memoryLogFile,
+        //                 "At time %d allocated %d bytes for process %d from %d to %d\n",
+        //                 getClk(),
+        //                 blocked->memSize,
+        //                 blocked->id,
+        //                 blocked->memStart,
+        //                 blocked->memStart + blocked->realBlock - 1);
+        //         fflush(memoryLogFile);
 
-                insert_HPF(heap, blocked);
-                updateProcess(READY, blocked);
-            } else {
-                break; // no memory available, stop polling
-            }
-        }
+        //         insert_HPF(heap, blocked);
+        //         updateProcess(READY, blocked);
+        //     } else {
+        //         break; // no memory available, stop polling
+        //     }
+        // }
 
         // If no process is running, start highest priority process
         if (!curr && !HeapisEmpty(heap)) {
@@ -938,8 +938,14 @@ void scheduleHPF(int totalProcesses) {
 
             // Wait for it to finish
             int status;
-            waitpid(curr->pid, &status, 0);
-
+            int start=getClk();
+           // waitpid(curr->pid, &status, 0);
+            int slice = curr->remainingTime;
+            int end   = start + slice;
+             while (getClk() < end) {
+  pollArrivalsForMinHeap_HPF(heap, Waitingqueue);                 //sleep(1);
+                usleep(100000);
+             }
             curr->finishTime = getClk();
             curr->turnaroundTime = curr->finishTime - curr->arrivalTime;
             curr->responseTime = curr->startTime - curr->arrivalTime;
