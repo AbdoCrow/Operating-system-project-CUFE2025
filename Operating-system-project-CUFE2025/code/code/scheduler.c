@@ -225,11 +225,21 @@ void insert(MinHeap *heap, PC* p) {
 
     // Fix the heap property by bubbling up
     int index = heap->Heapsize - 1;
-    while (index > 0 && heap->data[(index - 1) / 2].remainingTime > heap->data[index].remainingTime) {
-        swap(&heap->data[index], &heap->data[(index - 1) / 2]);
-        index = (index - 1) / 2;
+    while (index > 0) {
+        int parent = (index - 1) / 2;
+
+        // Check if current has higher priority OR same priority but earlier arrival
+        if (heap->data[index].remainingTime < heap->data[parent].remainingTime ||
+            (heap->data[index].remainingTime == heap->data[parent].remainingTime &&
+             heap->data[index].arrivalTime < heap->data[parent].arrivalTime)) {
+            swap(&heap->data[index], &heap->data[parent]);
+            index = parent;
+        } else {
+            break;
+        }
     }
 }
+
 void insert_HPF(MinHeap *heap, PC* p) {
     if (HeapisFull(heap)) {
         printf("Min Heap is full, cannot insert process\n");
@@ -345,34 +355,35 @@ void pollArrivalsForMinHeap(MinHeap *heap, CircularQueue* Waitingqueue) {
     ssize_t r;
     int msqid = msgget(MSG_KEY, 0);
     printf("Attempting to receive message at time %d\n", getClk());
+
     printf("Waiting queue has count  %d\n", Waitingqueue->count);
-    for (int i = 0; i < Waitingqueue->count; ++i) {
-    PC* p = peek(Waitingqueue);  // Peek without removing
 
-    void* mem_start = allocate_memory(p->memSize);
+    while (!isEmpty(Waitingqueue)) {
 
-    if (mem_start != NULL) {
-        // Allocation succeeded, now safe to dequeue
-        dequeue(Waitingqueue);
-
-        p->memPtr = mem_start;
-        p->memStart = (int)((char*)mem_start - memory);
-
-        fprintf(memoryLogFile,
-            "At time %d allocated %d bytes for process %d from %d to %d\n",
-            getClk(),
-            p->memSize,
-            p->id,
-            p->memStart,
-            p->memStart + p->memSize - 1);
-        fflush(memoryLogFile);
-
-        insert(heap, p);
-        updateProcess(READY, p);
-    }
-    else{
-        printf("still no enought memory");
-    }
+        PC *blocked = peek(Waitingqueue);  // Look at the first blocked process
+        void* mem_start = allocate_memory(blocked->memSize);
+        
+        if (mem_start != NULL) {
+            // Memory is now available, dequeue from blocked and add to ready
+            blocked = dequeue(Waitingqueue);
+            blocked->memPtr = mem_start;
+            blocked->memStart = (int)((char*)mem_start - memory);
+            blocked->realBlock = get_block_size(blocked->memSize);
+            
+            fprintf(memoryLogFile, 
+                "At time %d allocated %d bytes for process %d from %d to %d\n", 
+                getClk(), 
+                blocked->memSize, 
+                blocked->id, 
+                blocked->memStart, 
+                blocked->memStart + blocked->realBlock - 1);
+            fflush(memoryLogFile);
+            
+            insert(heap, blocked);  // Add to ready queue
+        } else {
+            // Still no memory available, keep process blocked
+            break;
+        }
     }
     while ((r = msgrcv(msqid, &pm, sizeof(pm.process), 2, IPC_NOWAIT)) > 0) {
         printf("Received message for process %d at time %d\n", pm.process.id, getClk());
@@ -734,7 +745,7 @@ init_buddy_system();  // Buddy system should already be initialized
     while (finished < totalProcesses) {
         pollArrivalsForMinHeap(heap, Waitingqueue);
 
-printf("///////////////////////////////// The Time Now Is %d ////////////////////////////////\n", getClk());
+    printf("///////////////////////////////// The Time Now Is %d ////////////////////////////////\n", getClk());
         // If there's a process running and a new one has shorter remaining time, preempt
         if (curr && !HeapisEmpty(heap) && heap->data[0].remainingTime < curr->remainingTime) {
             kill(curr->pid, SIGSTOP);
@@ -770,7 +781,7 @@ printf("///////////////////////////////// The Time Now Is %d ///////////////////
         if (curr) {
            // sleep(1);
            int lastClk = getClk();
-while (getClk() == lastClk) usleep(10000);  // busy wait until clock advances
+        while (getClk() == lastClk) usleep(10000);  // busy wait until clock advances
 
             curr->remainingTime--;
 
@@ -781,15 +792,15 @@ while (getClk() == lastClk) usleep(10000);  // busy wait until clock advances
                 curr->turnaroundTime = curr->finishTime - curr->arrivalTime;
                 curr->responseTime = curr->startTime - curr->arrivalTime;
                 curr->weightedTurnaroundTime=(float)curr->turnaroundTime / curr->runningTime;
-free_memory(curr);  // Free memory previously allocated in pollArrivals
-fprintf(memoryLogFile,
-        "At time %d freed %d bytes from process %d from %d to %d\n",
-        getClk(),
-        curr->memSize,
-        curr->id,
-        curr->memStart,
-        curr->memStart + curr->memSize - 1);
-    fflush(memoryLogFile);
+                free_memory(curr);  // Free memory previously allocated in pollArrivals
+                fprintf(memoryLogFile,
+                "At time %d freed %d bytes from process %d from %d to %d\n",
+                getClk(),
+                curr->memSize,
+                curr->id,
+                curr->memStart,
+                curr->memStart + curr->memSize - 1);
+                fflush(memoryLogFile);
                 updateProcess(TERMINATED, curr);
                 completed[completedCount++] = *curr;
                 free(curr);
@@ -801,12 +812,13 @@ fprintf(memoryLogFile,
         else {
            // sleep(1);  // idle cycle
            int lastClk = getClk();
-while (getClk() == lastClk) usleep(10000);  // busy wait until clock advances
+           while (getClk() == lastClk) usleep(10000);  // busy wait until clock advances
 
         }
     }
-cleanup_buddy_system();  // Free all memory allocated by the buddy system
+    cleanup_buddy_system();  // Free all memory allocated by the buddy system
     // destroyMinHeap(heap);
+    destroyQueue(Waitingqueue);
     free(heap);
 }
 

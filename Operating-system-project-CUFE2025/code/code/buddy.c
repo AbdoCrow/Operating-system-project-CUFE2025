@@ -231,7 +231,7 @@ void cleanup_buddy_system() {
         while (current != NULL) {
             Block* next = current->next;
             total_free_memory += current->size;
-            printf("Trying to allocate %d bytes at %p\n", current->size, current->buddy);
+            printf("Trying to dallocate %d bytes at %p\n", current->size, current->buddy);
             free(current);
             current = next;
         }
