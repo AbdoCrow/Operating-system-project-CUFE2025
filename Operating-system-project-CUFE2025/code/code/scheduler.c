@@ -163,25 +163,6 @@ void swap(PC *a, PC *b) {
 }
 
 // Function to heapify the Min Heap at a given index
-// void heapify(MinHeap *heap, int index) {
-//     int left = 2 * index + 1;
-//     int right = 2 * index + 2;
-//     int smallest = index;
-
-//     // Find the smallest among the current node, left child, and right child
-//     if (left < heap->Heapsize && heap->data[left].remainingTime < heap->data[smallest].remainingTime)
-//         smallest = left;
-
-//     if (right < heap->Heapsize && heap->data[right].remainingTime < heap->data[smallest].remainingTime)
-//         smallest = right;
-
-//     // Swap and heapify if needed
-//     if (smallest != index) {
-//         swap(&heap->data[index], &heap->data[smallest]);
-//         heapify(heap, smallest);
-//     }
-// }
-////////////
 void heapify(MinHeap *heap, int index) {
     int left = 2 * index + 1;
     int right = 2 * index + 2;
@@ -429,35 +410,35 @@ void pollArrivalsForMinHeap(MinHeap *heap, CircularQueue* Waitingqueue) {
 /////////////////////////////////////////////////////////
 // Allocate memory using buddy system
 
-        void* mem_start = allocate_memory(p->memSize);
-        if (mem_start == NULL) {
-            // printf("Error: Not enough memory for process %d\n", p->id);
-            // free(p);
-                        printf("Insufficient memory for process %d, adding to waiting queue\n", p->id);
-            enqueue(Waitingqueue, p);
-            continue;
-        }
-printf("Trying to allocate %d bytes for process %d at %p\n", p->memSize, p->id, mem_start);
-        // Save memory info in the process struct
-        p->memPtr = mem_start;
-        p->memStart = (int)((char*)mem_start - memory); 
+    void* mem_start = allocate_memory(p->memSize);
+    if (mem_start == NULL) {
+        // printf("Error: Not enough memory for process %d\n", p->id);
+        // free(p);
+                    printf("Insufficient memory for process %d, adding to waiting queue\n", p->id);
+        enqueue(Waitingqueue, p);
+        continue;
+    }
+    printf("Trying to allocate %d bytes for process %d at %p\n", p->memSize, p->id, mem_start);
+    // Save memory info in the process struct
+    p->memPtr = mem_start;
+    p->memStart = (int)((char*)mem_start - memory); 
 
-        fprintf(memoryLogFile, 
-        "At time %d allocated %d bytes for process %d from %d to %d\n", 
-        getClk(), 
-        p->memSize, 
-        p->id, 
-        p->memStart, 
-        p->memStart + p->memSize - 1);
-fflush(memoryLogFile);
+    fprintf(memoryLogFile, 
+    "At time %d allocated %d bytes for process %d from %d to %d\n", 
+    getClk(), 
+    p->memSize, 
+    p->id, 
+    p->memStart, 
+    p->memStart + p->memSize - 1);
+    fflush(memoryLogFile);
 
-/////////////////////////////////////////////////////////
-        // Insert the process into the MinHeap based on remainingTime
-        insert(heap, p); // Ensure the heap maintains the min-heap property on remainingTime
+    /////////////////////////////////////////////////////////
+    // Insert the process into the MinHeap based on remainingTime
+    insert(heap, p); // Ensure the heap maintains the min-heap property on remainingTime
 
-        // Update the process state to READY
-        updateProcess(READY, p);
-printf("received process st time %d", getClk());
+    // Update the process state to READY
+    updateProcess(READY, p);
+    printf("received process st time %d", getClk());
     }
 
     // Handle any potential errors from msgrcv
@@ -467,33 +448,88 @@ printf("received process st time %d", getClk());
     }
 }
 
-void pollArrivalsForMinHeap_HPF(MinHeap *heap) {
+void pollArrivalsForMinHeap_HPF(MinHeap *heap, CircularQueue* Waitingqueue) {
     ProcMsg pm;
     ssize_t r;
     int msqid = msgget(MSG_KEY, 0);
-    
+    int current_time = getClk();
+
+    // First, try to allocate memory for any blocked processes
+    while (!isEmpty(Waitingqueue)) {
+        PC *blocked = peek(Waitingqueue);
+        void* mem_start = allocate_memory(blocked->memSize);
+
+        if (mem_start != NULL) {
+            blocked = dequeue(Waitingqueue);
+            blocked->memPtr = mem_start;
+            blocked->memStart = (int)((char*)mem_start - memory);
+            blocked->realBlock = get_block_size(blocked->memSize);
+
+            fprintf(memoryLogFile,
+                "At time %d allocated %d bytes for process %d from %d to %d\n",
+                current_time,
+                blocked->memSize,
+                blocked->id,
+                blocked->memStart,
+                blocked->memStart + blocked->realBlock - 1);
+            fflush(memoryLogFile);
+
+            insert_HPF(heap, blocked);
+            updateProcess(READY, blocked);
+        } else {
+            break;
+        }
+    }
+
+    // Now handle new messages
     while ((r = msgrcv(msqid, &pm, sizeof(pm.process), 2, IPC_NOWAIT)) > 0) {
-        // Allocate memory for the new process and initialize it
         PC *p = malloc(sizeof(PC));
         *p = pm.process;
-        p->remainingTime = p->runningTime;  // Initialize remainingTime
-        p->state         = NEW;             // Set state to NEW
-        p->startTime     = -1;              // Not started yet
-        p->finishTime    = -1;              // Not finished yet
+        p->remainingTime = p->runningTime;
+        p->state = NEW;
+        p->startTime = -1;
+        p->finishTime = -1;
 
-        // Insert the process into the MinHeap based on proirity
+        if (current_time < p->arrivalTime) {
+            // Not ready yet — discard or delay externally
+            printf("Received process %d before its arrival time (%d < %d), skipping for now.\n",
+                   p->id, current_time, p->arrivalTime);
+            free(p);  // Optional: keep in a list elsewhere if needed
+            continue;
+        }
+
+        void* mem_start = allocate_memory(p->memSize);
+        if (mem_start == NULL) {
+            printf("Insufficient memory for process %d, adding to waiting queue\n", p->id);
+            enqueue(Waitingqueue, p);
+            continue;
+        }
+
+        // Memory allocated, finalize setup
+        p->memPtr = mem_start;
+        p->memStart = (int)((char*)mem_start - memory);
+        p->realBlock = get_block_size(p->memSize);
+
+        fprintf(memoryLogFile,
+            "At time %d allocated %d bytes for process %d from %d to %d\n",
+            current_time,
+            p->memSize,
+            p->id,
+            p->memStart,
+            p->memStart + p->realBlock - 1);
+        fflush(memoryLogFile);
+
         insert_HPF(heap, p);
-
-        // Update the process state to READY
         updateProcess(READY, p);
     }
 
-    // Handle any potential errors from msgrcv
     if (r < 0 && errno != ENOMSG) {
-        perror("msgrcv(MinHeap)");
+        perror("msgrcv(MinHeap_HPF)");
         exit(1);
     }
 }
+
+
 
 void logProcessLine(int time, int pid, const char *event,PC *p,int wait,int ta,float wta)
 {
@@ -853,35 +889,78 @@ void scheduleSRTN(int totalProcesses) {
 void scheduleHPF(int totalProcesses) {
     MinHeap *heap = malloc(sizeof(MinHeap));
     initMinHeap(heap);
+    CircularQueue* Waitingqueue = createQueue(totalProcesses);
     int finished = 0;
     PC *curr = NULL;
+    
+    init_buddy_system();  // Initialize the buddy memory system
 
     while (finished < totalProcesses) {
-        pollArrivalsForMinHeap_HPF(heap);  
+        pollArrivalsForMinHeap_HPF(heap, Waitingqueue);  // Handles arrivals + memory
 
-        // If no process is running, pick the highest priority one (lowest value)
+        // Try to allocate memory for blocked processes
+        while (!isEmpty(Waitingqueue)) {
+            PC *blocked = peek(Waitingqueue);
+            void* mem_start = allocate_memory(blocked->memSize);
+
+            if (mem_start != NULL) {
+                blocked = dequeue(Waitingqueue);
+                blocked->memPtr = mem_start;
+                blocked->memStart = (int)((char*)mem_start - memory);
+                blocked->realBlock = get_block_size(blocked->memSize);
+
+                fprintf(memoryLogFile,
+                        "At time %d allocated %d bytes for process %d from %d to %d\n",
+                        getClk(),
+                        blocked->memSize,
+                        blocked->id,
+                        blocked->memStart,
+                        blocked->memStart + blocked->realBlock - 1);
+                fflush(memoryLogFile);
+
+                insert_HPF(heap, blocked);
+                updateProcess(READY, blocked);
+            } else {
+                break; // no memory available, stop polling
+            }
+        }
+
+        // If no process is running, start highest priority process
         if (!curr && !HeapisEmpty(heap)) {
             curr = malloc(sizeof(PC));
-            *curr = extractMin_HPF(heap);  // top of the heap = highest priority
+            *curr = extractMin_HPF(heap);
 
             curr->pid = fork();
             if (curr->pid == 0) {
-                // child runs the process
                 char rt_str[16];
                 snprintf(rt_str, sizeof(rt_str), "%d", curr->remainingTime);
                 execlp("./process.out", "process.out", rt_str, NULL);
             }
 
+            if (curr->startTime < 0)
+                curr->startTime = getClk();
+
             updateProcess(RUNNING, curr);
 
-            // Wait for process to finish
+            // Wait for it to finish
             int status;
             waitpid(curr->pid, &status, 0);
 
             curr->finishTime = getClk();
             curr->turnaroundTime = curr->finishTime - curr->arrivalTime;
             curr->responseTime = curr->startTime - curr->arrivalTime;
-            curr->weightedTurnaroundTime=(float)curr->turnaroundTime / curr->runningTime;
+            curr->weightedTurnaroundTime = (float)curr->turnaroundTime / curr->runningTime;
+
+            free_memory(curr->memPtr);  // Free allocated memory
+            fprintf(memoryLogFile,
+                    "At time %d freed %d bytes from process %d from %d to %d\n",
+                    getClk(),
+                    curr->memSize,
+                    curr->id,
+                    curr->memStart,
+                    curr->memStart + curr->realBlock - 1);
+            fflush(memoryLogFile);
+
             updateProcess(TERMINATED, curr);
             completed[completedCount++] = *curr;
             printf("Finished process %d at time %d\n", curr->id, curr->finishTime);
@@ -889,10 +968,15 @@ void scheduleHPF(int totalProcesses) {
             curr = NULL;
             finished++;
         } else {
-            sleep(1);  // Idle wait
+            sleep(1);  // idle cycle
         }
     }
+
+    cleanup_buddy_system();  // Free all memory managed by buddy system
+    destroyQueue(Waitingqueue);
+    free(heap);
 }
+
 
 static void reap_children(int signo)
 {
