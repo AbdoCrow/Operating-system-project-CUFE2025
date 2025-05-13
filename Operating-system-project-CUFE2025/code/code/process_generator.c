@@ -85,10 +85,10 @@ printf("////////////////////////////////////////////////////////////one prcesss 
         execlp("./clk.out", "clk.out", NULL);
         perror("execlp clk"); exit(1);
     }
-    initClk();
 //     int lastClk = getClk();
 // while (getClk() == lastClk);  // busy wait until clock advances
-    
+sleep(1); // wait for clock to start
+    initClk();
     printf("[Generator] Clock now = %d\n", getClk());
 
     // Fork+exec the scheduler, passing algo name and optional quantum
