@@ -490,13 +490,7 @@ void pollArrivalsForMinHeap_HPF(MinHeap *heap, CircularQueue* Waitingqueue) {
         p->startTime = -1;
         p->finishTime = -1;
 
-        if (current_time < p->arrivalTime) {
-            // Not ready yet — discard or delay externally
-            printf("Received process %d before its arrival time (%d < %d), skipping for now.\n",
-                   p->id, current_time, p->arrivalTime);
-            free(p);  // Optional: keep in a list elsewhere if needed
-            continue;
-        }
+     
 
         void* mem_start = allocate_memory(p->memSize);
         if (mem_start == NULL) {

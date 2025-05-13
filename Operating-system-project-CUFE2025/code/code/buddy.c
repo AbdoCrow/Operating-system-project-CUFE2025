@@ -136,7 +136,6 @@ static void mergeFreeBlocks(Block* block) {
     index = get_block_index(left->size);
     left->next = free_blocks[index];
     free_blocks[index] = left;
-    
     printf("Merged blocks: %d + %d = %d bytes at offset %d\n", 
            left->size/2, left->size/2, left->size, left->start);
     
